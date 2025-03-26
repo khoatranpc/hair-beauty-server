@@ -1,15 +1,18 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
+import categoryRoutes from './category.routes';
+import productRoutes from './product.routes';
+import uploadRoutes from './upload.routes';
 
 const router = Router();
 
-// API v1 routes
 const v1Router = Router();
 
-// Mount all routes
 v1Router.use('/auth', authRoutes);
+v1Router.use('/categories', categoryRoutes);
+v1Router.use('/products', productRoutes);
+v1Router.use('/upload', uploadRoutes);
 
-// Mount v1 router to /api/v1
 router.use('/api/v1', v1Router);
 
 export default router;
