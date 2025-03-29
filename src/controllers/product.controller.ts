@@ -125,12 +125,20 @@ const productController = {
         isGetAll,
         minPrice,
         maxPrice,
+        sortPrice, // Add this parameter
       } = req.query;
 
-      const conditions: any = {
-        isDeleted: req.user?.role === UserRole.CUSTOMER,
-      };
-
+      const conditions: any = {};
+      if (req.user?.role === UserRole.CUSTOMER || !req.user) {
+        conditions.isActive = true;
+        conditions.isDeleted = false;
+      }
+      let sortOptions: any = { createdAt: -1 }; // Default sort
+      if (sortPrice === "asc") {
+        sortOptions = { price: 1 };
+      } else if (sortPrice === "desc") {
+        sortOptions = { price: -1 };
+      }
       if (search) {
         conditions.$or = [
           { name: { $regex: search, $options: "i" } },
@@ -166,7 +174,7 @@ const productController = {
       if (isGetAll === "true") {
         products = await Product.find(conditions)
           .populate("categories", "name slug")
-          .sort({ createdAt: -1 });
+          .sort(sortOptions); // Apply sort here
 
         response = {
           success: true,
@@ -181,7 +189,7 @@ const productController = {
           .populate("categories", "name slug")
           .skip(skip)
           .limit(Number(limit))
-          .sort({ createdAt: -1 });
+          .sort(sortOptions); // Apply sort here
 
         response = {
           success: true,
