@@ -3,22 +3,24 @@ import OrderModel, { OrderStatus } from "../models/Order";
 import CartModel from "../models/Cart";
 import Product from "../models/Product";
 import { IBaseResponse } from "../types";
+import User, { UserRole } from "../models/User";
+import { Types } from "mongoose";
 
 const orderController = {
   create: async (req: Request, res: Response) => {
     try {
       const userId = req.user?._id;
-      const { shippingAddress, paymentMethod, items: selectedItems } = req.body;
+      const { shippingAddress, productIds } = req.body;
 
       if (
-        !selectedItems ||
-        !Array.isArray(selectedItems) ||
-        selectedItems.length === 0
+        !productIds ||
+        !Array.isArray(productIds) ||
+        productIds.length === 0
       ) {
         res.status(400).json({
           success: false,
-          message: "Invalid items",
-          error: "Please select items to checkout",
+          message: "Invalid products",
+          error: "Please select products to checkout",
         });
         return;
       }
@@ -37,20 +39,17 @@ const orderController = {
         return;
       }
 
-      // Filter and validate selected items
-      const orderItems = cart.items.filter((item) =>
-        selectedItems.some(
-          (selected) =>
-            selected.productId === item.product.toString() &&
-            selected.quantity <= item.quantity
-        )
-      );
+      // Filter selected items from cart
+
+      const orderItems = cart.items.filter((item) => {
+        return productIds.includes((item.product as any)._id.toString());
+      });
 
       if (orderItems.length === 0) {
         res.status(400).json({
           success: false,
           message: "Invalid items",
-          error: "Selected items not found in cart",
+          error: "Selected products not found in cart",
         });
         return;
       }
@@ -58,9 +57,6 @@ const orderController = {
       // Validate stock and calculate total
       let totalAmount = 0;
       for (const item of orderItems) {
-        const selectedItem = selectedItems.find(
-          (selected) => selected.productId === item.product.toString()
-        );
         const product = item.product as any;
 
         if (!product.isActive || product.isDeleted) {
@@ -72,7 +68,7 @@ const orderController = {
           return;
         }
 
-        if (product.stock < selectedItem!.quantity) {
+        if (product.stock < item.quantity) {
           res.status(400).json({
             success: false,
             message: "Insufficient stock",
@@ -81,57 +77,38 @@ const orderController = {
           return;
         }
 
-        totalAmount +=
-          selectedItem!.quantity *
-          (!!product.salePrice ? product.salePrice : product.price);
+        totalAmount += item.quantity * (product.salePrice || product.price);
       }
 
-      // Create order with selected items
+      // Create order
       const order = new OrderModel({
         user: userId,
-        items: orderItems.map((item) => {
-          const selectedItem = selectedItems.find(
-            (selected) => selected.productId === item.product.toString()
-          );
-          return {
-            product: (item.product as any)._id,
-            quantity: selectedItem!.quantity,
-            price:
-              (item.product as any).salePrice || (item.product as any).price,
-          };
-        }),
+        items: orderItems.map((item) => ({
+          product: (item.product as any)._id,
+          quantity: item.quantity,
+          price: (item.product as any).salePrice || (item.product as any).price,
+        })),
         totalAmount,
         shippingAddress,
-        paymentMethod,
+        paymentMethod: "cod", // Default to COD
       });
 
       // Update product stock
       await Promise.all(
-        orderItems.map((item) => {
-          const selectedItem = selectedItems.find(
-            (selected) => selected.productId === item.product.toString()
-          );
-          return Product.findByIdAndUpdate(item.product, {
-            $inc: { stock: -selectedItem!.quantity },
-          });
-        })
+        orderItems.map((item) =>
+          Product.findByIdAndUpdate(
+            item.product,
+            {
+              $inc: { stock: -item.quantity },
+            },
+            { new: true }
+          )
+        )
       );
 
-      // Remove ordered items from cart or update quantities
-      cart.items = cart.items
-        .map((item) => {
-          const selectedItem = selectedItems.find(
-            (selected) => selected.productId === item.product.toString()
-          );
-          if (selectedItem) {
-            if (selectedItem.quantity === item.quantity) {
-              return null; // Remove item
-            }
-            item.quantity -= selectedItem.quantity; // Update quantity
-          }
-          return item;
-        })
-        .filter(Boolean) as any;
+      cart.items = cart.items.filter(
+        (item) => !productIds.includes((item.product as any)._id.toString())
+      );
 
       await cart.save();
       await order.save();
@@ -139,7 +116,11 @@ const orderController = {
         path: "items.product",
         select: "name slug price images",
       });
-
+      await order.updateStatus(
+        OrderStatus.CONFIRMED,
+        req.user._id,
+        "Tạo mới đơn hàng"
+      );
       const response: IBaseResponse = {
         success: true,
         message: "Order created successfully",
@@ -158,10 +139,58 @@ const orderController = {
 
   getAll: async (req: Request, res: Response) => {
     try {
-      const userId = req.user?._id;
-      const { page = 1, limit = 10, status } = req.query;
+      const user = req.user;
+      if (!user?._id) {
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+          error: "Please login to continue",
+        });
+        return;
+      }
 
-      const query: any = { user: userId };
+      const {
+        page = 1,
+        limit = 10,
+        status,
+        orderCode,
+        dateRange,
+        search,
+      } = req.query;
+
+      const query: any = {};
+
+      if (user.role === UserRole.CUSTOMER) {
+        query.user = user._id;
+      } else {
+        if (orderCode) {
+          query.orderCode = { $regex: orderCode, $options: "i" };
+        }
+
+        if (search) {
+          const users = await User.find({
+            $or: [
+              { email: { $regex: search, $options: "i" } },
+              { fullName: { $regex: search, $options: "i" } },
+              { phone: { $regex: search, $options: "i" } },
+            ],
+          }).select("_id");
+
+          if (users.length > 0) {
+            query.user = { $in: users.map((u) => u._id) };
+          } else {
+            query.user = null;
+          }
+        }
+
+        if (Array.isArray(dateRange) && dateRange?.length) {
+          query.createdAt = {
+            $gte: new Date(Number(dateRange?.[0] as string)),
+            $lte: new Date(Number(dateRange?.[1] as string)),
+          };
+        }
+      }
+
       if (status) {
         query.status = status;
       }
@@ -173,6 +202,10 @@ const orderController = {
         .populate({
           path: "items.product",
           select: "name slug price images",
+        })
+        .populate({
+          path: "user",
+          select: "email fullName phone",
         })
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -202,15 +235,12 @@ const orderController = {
 
   getById: async (req: Request, res: Response) => {
     try {
-      const userId = req.user?._id;
       const { id } = req.params;
-
       const order = await OrderModel.findOne({
-        _id: id,
-        user: userId,
+        _id: new Types.ObjectId(id),
       }).populate({
-        path: "items.product",
-        select: "name slug price images",
+        path: "items.product user",
+        select: "name slug price images fullName phone email",
       });
 
       if (!order) {
@@ -293,6 +323,86 @@ const orderController = {
       res.status(500).json({
         success: false,
         message: "Failed to cancel order",
+        error: error.message,
+      });
+    }
+  },
+
+  updateOrder: async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { status, note } = req.body;
+      const userId = req.user?._id;
+
+      const order = await OrderModel.findById(id);
+      if (!order) {
+        res.status(404).json({
+          success: false,
+          message: "Order not found",
+          error: "Invalid order ID",
+        });
+        return;
+      }
+      if (
+        req.user?.role === UserRole.CUSTOMER &&
+        order.user?.toString() !== userId?.toString()
+      ) {
+        res.status(403).json({
+          success: false,
+          message: "Forbidden",
+          error: "You do not have permission to update this order",
+        });
+        return;
+      }
+
+      if (status) {
+        // chỉ huỷ được khi trạng thái là đang chờ xử lý
+        if (
+          status === OrderStatus.CANCELLED &&
+          order.status !== OrderStatus.PENDING
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid status update",
+            error: "Orders can only be cancelled when pending",
+          });
+        }
+
+        // chỉ cập nhật trạng thái đã giao khi trạng thái là đang giao hàng
+        if (
+          status === OrderStatus.DELIVERED &&
+          order.status !== OrderStatus.SHIPPING
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid status update",
+            error: "Orders must be shipping before being marked as delivered",
+          });
+        }
+
+        await order.updateStatus(status, userId, note);
+      }
+
+      await order.populate([
+        {
+          path: "items.product",
+          select: "name slug price images",
+        },
+        {
+          path: "history.updatedBy",
+          select: "fullName email",
+        },
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        message: "Order updated successfully",
+        data: order,
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update order",
         error: error.message,
       });
     }
