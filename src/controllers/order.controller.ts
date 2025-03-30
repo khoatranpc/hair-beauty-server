@@ -356,30 +356,43 @@ const orderController = {
       }
 
       if (status) {
-        // chỉ huỷ được khi trạng thái là đang chờ xử lý
-        if (
-          status === OrderStatus.CANCELLED &&
-          order.status !== OrderStatus.PENDING
-        ) {
-          res.status(400).json({
-            success: false,
-            message: "Invalid status update, Orders can only be cancelled when pending",
-            error: "Orders can only be cancelled when pending",
-          });
-          return;
-        }
+        // Customer restrictions
+        if (req.user?.role === UserRole.CUSTOMER) {
+          if (status !== OrderStatus.CANCELLED) {
+            res.status(403).json({
+              success: false,
+              message: "Forbidden",
+              error: "Customers can only cancel their orders",
+            });
+            return;
+          }
+          if (order.status !== OrderStatus.PENDING) {
+            res.status(400).json({
+              success: false,
+              message: "Cannot cancel order",
+              error: "You can only cancel orders that are pending confirmation",
+            });
+            return;
+          }
+        } else {
+          // Admin/Staff validations
+          if (status === OrderStatus.CANCELLED && order.status !== OrderStatus.PENDING) {
+            res.status(400).json({
+              success: false,
+              message: "Invalid status update",
+              error: "Orders can only be cancelled when pending",
+            });
+            return;
+          }
 
-        // chỉ cập nhật trạng thái đã giao khi trạng thái là đang giao hàng
-        if (
-          status === OrderStatus.DELIVERED &&
-          order.status !== OrderStatus.SHIPPING
-        ) {
-          res.status(400).json({
-            success: false,
-            message: "Invalid status update, Orders must be shipping before being marked as delivered",
-            error: "Orders must be shipping before being marked as delivered",
-          });
-          return;
+          if (status === OrderStatus.DELIVERED && order.status !== OrderStatus.SHIPPING) {
+            res.status(400).json({
+              success: false,
+              message: "Invalid status update",
+              error: "Orders must be shipping before being marked as delivered",
+            });
+            return;
+          }
         }
 
         await order.updateStatus(status, userId, note);
