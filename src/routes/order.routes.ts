@@ -16,6 +16,9 @@ router.get("/", orderController.getAll);
 // Get order by ID
 router.get("/:id", orderController.getById);
 
+// Update order by ID
+router.put("/:id", orderController.updateOrder);
+
 // Cancel order
 router.delete("/:id", orderController.cancel);
 

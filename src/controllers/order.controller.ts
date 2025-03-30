@@ -361,11 +361,12 @@ const orderController = {
           status === OrderStatus.CANCELLED &&
           order.status !== OrderStatus.PENDING
         ) {
-          return res.status(400).json({
+          res.status(400).json({
             success: false,
-            message: "Invalid status update",
+            message: "Invalid status update, Orders can only be cancelled when pending",
             error: "Orders can only be cancelled when pending",
           });
+          return;
         }
 
         // chỉ cập nhật trạng thái đã giao khi trạng thái là đang giao hàng
@@ -373,11 +374,12 @@ const orderController = {
           status === OrderStatus.DELIVERED &&
           order.status !== OrderStatus.SHIPPING
         ) {
-          return res.status(400).json({
+          res.status(400).json({
             success: false,
-            message: "Invalid status update",
+            message: "Invalid status update, Orders must be shipping before being marked as delivered",
             error: "Orders must be shipping before being marked as delivered",
           });
+          return;
         }
 
         await order.updateStatus(status, userId, note);
@@ -394,17 +396,19 @@ const orderController = {
         },
       ]);
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         message: "Order updated successfully",
         data: order,
       });
+      return;
     } catch (error: any) {
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         message: "Failed to update order",
         error: error.message,
       });
+      return;
     }
   },
 };
