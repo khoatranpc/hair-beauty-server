@@ -2,11 +2,12 @@ import { Request, Response } from "express";
 import Category from "../models/Category";
 import { IBaseResponse } from "../types";
 import slugify from "slugify";
+import { TypeOfCategory } from "../types/enum";
 
 const categoryController = {
   create: async (req: Request, res: Response) => {
     try {
-      const { name, slug, description, parentCategories } = req.body;
+      const { name, slug, description, parentCategories, type } = req.body;
 
       const existingCategory = await Category.findOne({ slug });
       if (existingCategory) {
@@ -23,6 +24,7 @@ const categoryController = {
         slug,
         description,
         parentCategories,
+        type,
       });
 
       await category.save();
@@ -98,9 +100,24 @@ const categoryController = {
 
   getAll: async (req: Request, res: Response) => {
     try {
-      const { page = 1, limit = 10, search, isActive, isGetAll } = req.query;
+      const {
+        page = 1,
+        limit = 10,
+        search,
+        isActive,
+        isGetAll,
+        type,
+      } = req.query;
 
       const conditions: any = {};
+      if (type) {
+        conditions.type = type;
+      } else {
+        conditions.$or = [
+          { type: TypeOfCategory.product },
+          { type: { $exists: false } },
+        ];
+      }
       if (search) {
         conditions.$or = [
           {
@@ -115,7 +132,6 @@ const categoryController = {
         ];
       }
       if (isActive !== undefined) conditions.isActive = isActive === "true";
-
       let categories;
       let total = 0;
       let response: IBaseResponse;

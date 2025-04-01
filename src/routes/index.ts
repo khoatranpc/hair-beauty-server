@@ -4,7 +4,8 @@ import categoryRoutes from "./category.routes";
 import productRoutes from "./product.routes";
 import uploadRoutes from "./upload.routes";
 import cartRoutes from "./cart.routes";
-import orderRoutes from './order.routes';
+import orderRoutes from "./order.routes";
+import shopRoutes from "./shop.routes";
 
 const router = Router();
 
@@ -15,7 +16,8 @@ v1Router.use("/categories", categoryRoutes);
 v1Router.use("/products", productRoutes);
 v1Router.use("/upload", uploadRoutes);
 v1Router.use("/cart", cartRoutes);
-v1Router.use('/orders', orderRoutes);
+v1Router.use("/orders", orderRoutes);
+v1Router.use("/shop", shopRoutes);
 
 router.use("/api/v1", v1Router);
 

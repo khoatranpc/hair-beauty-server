@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
-import { Collections } from "../types/enum";
+import { Collections, TypeOfCategory } from "../types/enum";
 
 export interface ICategory extends Document {
   name: string;
@@ -7,6 +7,7 @@ export interface ICategory extends Document {
   description?: string;
   parentCategories: string[];
   isActive: boolean;
+  type?: TypeOfCategory;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,6 +40,11 @@ const categorySchema = new Schema<ICategory>(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    type: {
+      type: String,
+      enum: TypeOfCategory,
+      default: TypeOfCategory.product,
     },
   },
   {
