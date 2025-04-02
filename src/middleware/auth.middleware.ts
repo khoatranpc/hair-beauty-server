@@ -15,6 +15,26 @@ declare global {
     }
 }
 
+export const verifyToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+
+        if (!token) {
+            next();
+            return;
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default_secret') as JwtPayload;
+        const user = await User.findById(decoded.userId).select('-password');
+        
+        req.user = user || null;
+        next();
+    } catch (error) {
+        req.user = null;
+        next();
+    }
+};
+
 const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const token = req.headers.authorization?.split(' ')[1];
@@ -52,4 +72,4 @@ const authMiddleware = async (req: Request, res: Response, next: NextFunction) =
     }
 };
 
-export default authMiddleware;
+export { authMiddleware as default };

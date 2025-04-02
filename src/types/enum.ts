@@ -5,6 +5,7 @@ export enum Collections {
   orders = "orders",
   carts = "carts",
   shops = "shops",
+  blogs = "blogs",
 }
 
 export enum TypeOfCategory {
