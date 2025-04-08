@@ -60,9 +60,9 @@ const blogController = {
         const existingBlog = await BlogModel.findOne({
           $or: [
             { _id: Types.ObjectId.isValid(id) ? id : null },
-            { slug: updateData.slug }
+            { slug: updateData.slug },
           ],
-          _id: { $ne: Types.ObjectId.isValid(id) ? id : null }
+          _id: { $ne: Types.ObjectId.isValid(id) ? id : null },
         });
         if (existingBlog) {
           res.status(400).json({
